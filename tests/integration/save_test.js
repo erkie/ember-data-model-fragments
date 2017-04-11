@@ -142,6 +142,69 @@ test('persisting the owner record when a fragment is dirty moves owner record, f
   });
 });
 
+test('updating complex model should work without circular json error', function(assert) {
+  return Ember.run(() => {
+    store.push({
+      data: {
+        type: 'person',
+        id: 1,
+        attributes: {
+          name: {
+            first: 'Eddard',
+            last: 'Stark'
+          },
+          addresses: [
+            {
+              street: '1 Great Keep',
+              city: 'Winterfell',
+              region: 'North',
+              country: 'Westeros'
+            }
+          ]
+        }
+      }
+    });
+
+    server.put('/people/1', () => {
+      return [200, { 'Content-Type': 'application/json' }, JSON.stringify({
+        person: {
+          id: 1,
+          name: {
+            first: 'Arya'
+          },
+          addresses: [
+            {
+              street: '1 Great Keep'
+            }
+          ]
+        }
+      })];
+    });
+
+    return store.find('person', 1).then(person => {
+      let name = person.get('name');
+      let address = person.get('addresses.firstObject');
+
+      name.set('first', 'Arya');
+      address.set('street', '1 Godswood');
+
+      return person.save();
+    }).then(person => {
+      let name = person.get('name');
+      let addresses = person.get('addresses');
+      let address = addresses.get('firstObject');
+
+      assert.equal(name.get('first'), 'Arya', 'change is persisted');
+      assert.equal(name.get('last'), 'Stark', 'last is same');
+      assert.equal(address.get('street'), '1 Godswood', 'fragment array change is persisted');
+      assert.ok(!name.get('hasDirtyAttributes'), 'fragment is clean');
+      assert.ok(!addresses.isAny('hasDirtyAttributes'), 'all fragment array fragments are clean');
+      assert.ok(!addresses.get('hasDirtyAttributes'), 'fragment array is clean');
+      assert.ok(!person.get('hasDirtyAttributes'), 'owner record is clean');
+    });
+  });
+});
+
 test('persisting a new owner record moves the owner record, fragment array, and all fragments into clean state', function(assert) {
   return Ember.run(() => {
     let data = {
